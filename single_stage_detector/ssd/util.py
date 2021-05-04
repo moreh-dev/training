@@ -45,7 +45,10 @@ def calc_iou_tensor(box1, box2):
     # mask2 = ~mask2
 
     delta = rb - lt
-    delta[delta < 0] = 0
+    #delta[delta < 0] = 0
+    ##############################
+    delta.masked_fill_((delta < 0), 0)
+    ###############################
     intersect = delta[:, :, 0] * delta[:, :, 1]
     # *mask1.float()*mask2.float()
 
@@ -98,13 +101,22 @@ class Encoder(object):
         best_dbox_ious.index_fill_(0, best_bbox_idx, 2.0)
 
         idx = torch.arange(0, best_bbox_idx.size(0), dtype=torch.int64)
-        best_dbox_idx[best_bbox_idx[idx]] = idx
-
+        # best_dbox_idx[best_bbox_idx[idx]] = idx
+        #############################################
+        tmp = best_bbox_idx.index_select(0, idx)
+        best_dbox_idx.index_put_((tmp, ), idx)
+        #############################################
+        
         # filter IoU > 0.5
         masks = best_dbox_ious > criteria
         labels_out = torch.zeros(self.nboxes, dtype=torch.long)
         # print(maxloc.shape, labels_in.shape, labels_out.shape)
-        labels_out[masks] = labels_in[best_dbox_idx[masks]]
+        # labels_out[masks] = labels_in[best_dbox_idx[masks]]
+        ###################################################
+        tmp = torch.masked_select(best_dbox_idx, masks)
+        tmp2 = labels_in.index_select(0, tmp)
+        labels_out.index_put_((masks, ), tmp2)
+        ###################################################
         bboxes_out = self.dboxes.clone()
         bboxes_out[masks, :] = bboxes_in[best_dbox_idx[masks], :]
         # Transform format to xywh format
@@ -362,7 +374,10 @@ class SSDCropping(object):
                 # print(left, top, right, bottom)
                 # print(labels, bboxes, masks)
                 bboxes = bboxes[masks, :]
-                labels = labels[masks]
+                # labels = labels[masks]
+                ###################################################
+                labels = torch.masked_select(labels, masks)
+                ###################################################
 
                 left_idx = int(left * wtot)
                 top_idx = int(top * htot)

@@ -1,8 +1,8 @@
 import os
 from argparse import ArgumentParser
-from utils import DefaultBoxes, Encoder, COCODetection
+from util import DefaultBoxes, Encoder, COCODetection
 from base_model import Loss
-from utils import SSDTransformer
+from util import SSDTransformer
 from ssd300 import SSD300
 import torch
 from torch.autograd import Variable
