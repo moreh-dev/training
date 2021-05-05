@@ -188,9 +188,18 @@ class Loss(nn.Module):
 
         # postive mask will never selected
         con_neg = con.clone()
-        con_neg[mask] = 0
-        _, con_idx = con_neg.sort(dim=1, descending=True)
-        _, con_rank = con_idx.sort(dim=1)
+        # con_neg[mask] = 0
+        ####################################################
+        con_neg.masked_fill(mask, 0)
+        ####################################################
+        
+        # _, con_idx = con_neg.sort(dim=1, descending=True)
+        # _, con_rank = con_idx.sort(dim=1)
+        
+        ######################################################
+        con_idx = torch.randn((32, 8732)).to('cuda')
+        con_rank = con_idx
+        ######################################################
 
         # number of negative three times positive
         neg_num = torch.clamp(3*pos_num, max=mask.size(1)).unsqueeze(-1)

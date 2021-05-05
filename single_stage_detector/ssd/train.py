@@ -349,10 +349,17 @@ def train300_mlperf_coco(args):
                     fimg = fimg.cuda()
                     trans_bbox = trans_bbox.cuda()
                     flabel = flabel.cuda()
-                fimg = Variable(fimg, requires_grad=True)
+                #fimg = Variable(fimg, requires_grad=True)
+                #################################################################
+                fimg.requires_grad = True
+                #################################################################
                 ploc, plabel = ssd300(fimg)
-                gloc, glabel = Variable(trans_bbox, requires_grad=False), \
-                               Variable(flabel, requires_grad=False)
+                # gloc, glabel = Variable(trans_bbox, requires_grad=False), \
+                #                Variable(flabel, requires_grad=False)
+                #################################################################
+                gloc = trans_bbox
+                glabel = flabel
+                #################################################################
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
                 loss.backward()
