@@ -295,7 +295,8 @@ def main():
         logger.info(config_str)
     logger.info("Running with config:\n{}".format(cfg))
 
-    model, success = train(cfg, args.local_rank, args.distributed, args.disable_allreduce_for_logging, random_number_generator)
+    # model, success = train(cfg, args.local_rank, args.distributed, args.disable_allreduce_for_logging, random_number_generator)
+    model, success = train(cfg, args.local_rank, args.distributed, True, random_number_generator)
 
     if success is not None:
         if success:

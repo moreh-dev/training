@@ -31,7 +31,7 @@ class BoxList(object):
 
     def __init__(self, bbox, image_size, mode="xyxy"):
         device = bbox.device if isinstance(bbox, torch.Tensor) else torch.device("cpu")
-        bbox = torch.as_tensor(bbox, dtype=torch.float32, device=device)
+        # bbox = torch.as_tensor(bbox, dtype=torch.float32, device=device)
         if bbox.ndimension() != 2:
             raise ValueError(
                 "bbox should have 2 dimensions, got {}".format(bbox.ndimension())
@@ -216,7 +216,13 @@ class BoxList(object):
         return bbox
 
     def __getitem__(self, item):
-        bbox = BoxList(self.bbox[item], self.size, self.mode)
+        # bbox = BoxList(self.bbox[item], self.size, self.mode)
+        ##################################
+        tmp = self.bbox[item]
+        if tmp.ndimension() == 3:
+            tmp = torch.squeeze(tmp, dim=0)
+        bbox = BoxList(tmp, self.size, self.mode)
+        ##################################
         for k, v in self.extra_fields.items():
             bbox.add_field(k, v[item])
         return bbox
