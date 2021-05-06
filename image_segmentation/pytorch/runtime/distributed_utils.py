@@ -11,7 +11,8 @@ def get_device(local_rank):
         torch.cuda.set_device(local_rank % torch.cuda.device_count())
         device = torch.device("cuda")
     else:
-        device = torch.device("cpu")
+        # device = torch.device("cpu")
+        device = torch.device("cuda")
     return device
 
 

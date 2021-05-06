@@ -63,7 +63,7 @@ class Dice:
 def to_one_hot(array, layout, channel_axis):
     if len(array.shape) >= 5:
         array = torch.squeeze(array, dim=channel_axis)
-    array = F.one_hot(array.long(), num_classes=3)
+    #array = F.one_hot(array.long(), num_classes=3)
     if layout == "NCDHW":
         array = array.permute(0, 4, 1, 2, 3).float()
     return array
@@ -78,7 +78,8 @@ class DiceCELoss(nn.Module):
 
     def forward(self, y_pred, y_true):
         cross_entropy = self.cross_entropy(y_pred, torch.squeeze(y_true, dim=1).long())
-        dice = torch.mean(1.0 - self.dice(y_pred, y_true))
+        # dice = torch.mean(1.0 - self.dice(y_pred, y_true))
+        dice = 0
         return (dice + cross_entropy) / 2
 
 
