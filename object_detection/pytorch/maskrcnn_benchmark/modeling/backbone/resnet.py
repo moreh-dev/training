@@ -309,13 +309,13 @@ class Bottleneck(nn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-        # out = F.relu_(out)
-        out.relu_()
+        out = F.relu_(out)
+        
         
         out = self.conv2(out)
         out = self.bn2(out)
-        # out = F.relu_(out)
-        out.relu_()
+        out = F.relu_(out)
+        
 
         out0 = self.conv3(out)
         out = self.bn3(out0)
@@ -324,8 +324,8 @@ class Bottleneck(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        # out = F.relu_(out)
-        out.relu_()
+        out = F.relu_(out)
+        
 
         return out
 
@@ -347,8 +347,7 @@ class BaseStem(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
-        # x = F.relu_(x)
-        x.relu_()
+        x = F.relu_(x)
         x = F.max_pool2d(x, kernel_size=3, stride=2, padding=1)
         return x
 
