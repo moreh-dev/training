@@ -211,6 +211,10 @@ def train300_mlperf_coco(args):
             # set seeds properly
             args.seed = broadcast_seeds(args.seed, device)
             local_seed = (args.seed + dist.get_rank()) % 2**32
+
+    ##################################
+    local_seed = 1
+    ##################################
     mllogger.event(key=mllog_const.SEED, value=local_seed)
     torch.manual_seed(local_seed)
     np.random.seed(seed=local_seed)
@@ -248,6 +252,9 @@ def train300_mlperf_coco(args):
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
                                   num_workers=4)
+    train_dataloader = DataLoader(train_coco,
+                                  batch_size=args.batch_size,
+                                  )
     # set shuffle=True in DataLoader
     if args.rank==0:
         val_dataloader = DataLoader(val_coco,
