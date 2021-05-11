@@ -310,12 +310,10 @@ class Bottleneck(nn.Module):
         out = self.conv1(x)
         out = self.bn1(out)
         out = F.relu_(out)
-        
-        
+
         out = self.conv2(out)
         out = self.bn2(out)
         out = F.relu_(out)
-        
 
         out0 = self.conv3(out)
         out = self.bn3(out0)
@@ -325,7 +323,6 @@ class Bottleneck(nn.Module):
 
         out += identity
         out = F.relu_(out)
-        
 
         return out
 
