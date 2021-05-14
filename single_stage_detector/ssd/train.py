@@ -369,7 +369,13 @@ def train300_mlperf_coco(args):
                 #################################################################
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
+                
+                # ploc.retain_grad()
+                # plabel.retain_grad()
+                # loss.retain_grad()
+                
                 loss.backward()
+                
 
             warmup_step(iter_num, current_lr)
             optim.step()
