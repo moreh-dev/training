@@ -44,7 +44,7 @@ LR=${LR:-"2.5e-3"}
 
 echo "running benchmark"
 
-export DATASET_DIR="/data/coco2017"
+export DATASET_DIR="/nas/share/dataset/mlperf/ssd/"
 export TORCH_MODEL_ZOO="/data/torchvision"
 
 python -m bind_launch --nsockets_per_node ${DGXNSOCKET} \

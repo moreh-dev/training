@@ -313,6 +313,10 @@ class SSDCropping(object):
         while True:
             mode = random.choice(self.sample_options)
 
+            ##################################
+            mode = None
+            ##################################
+
             if mode is None:
                 return img, img_size, bboxes, labels
 
@@ -327,12 +331,22 @@ class SSDCropping(object):
                 w = random.uniform(0.3, 1.0)
                 h = random.uniform(0.3, 1.0)
 
+                #################################
+                w = 0.5
+                h = 0.5
+                #################################
+
                 if w / h < 0.5 or w / h > 2:
                     continue
 
                 # left 0 ~ wtot - w, top 0 ~ htot - h
                 left = random.uniform(0, 1.0 - w)
                 top = random.uniform(0, 1.0 - h)
+
+                #################################
+                left = 0.5
+                top = 0.5
+                #################################
 
                 right = left + w
                 bottom = top + h
@@ -429,9 +443,9 @@ class RandomHorizontalFlip(object):
         self.p = p
 
     def __call__(self, image, bboxes):
-        if random.random() < self.p:
-            bboxes[:, 0], bboxes[:, 2] = 1.0 - bboxes[:, 2], 1.0 - bboxes[:, 0]
-            return image.transpose(Image.FLIP_LEFT_RIGHT), bboxes
+        # if random.random() < self.p:
+        #     bboxes[:, 0], bboxes[:, 2] = 1.0 - bboxes[:, 2], 1.0 - bboxes[:, 0]
+        #     return image.transpose(Image.FLIP_LEFT_RIGHT), bboxes
         return image, bboxes
 
 
@@ -458,9 +472,11 @@ class SSDTransformer(object):
             transforms.Resize(self.size),
             # transforms.Resize((300, 300)),
             # transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.125, contrast=0.5,
-                                   saturation=0.5, hue=0.05
-                                   ),
+
+            #remove randomness
+            # transforms.ColorJitter(brightness=0.125, contrast=0.5,
+            #                        saturation=0.5, hue=0.05
+            #                        ),
             transforms.ToTensor()
             # LightingNoice(),
         ])

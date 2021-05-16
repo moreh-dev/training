@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Get COCO 2017 data sets
-mkdir -p pytorch/datasets/coco
-pushd pytorch/datasets/coco
+mkdir -p /scratch/dataset/mlperf/maskrcnn/coco2017
+pushd /scratch/dataset/mlperf/maskrcnn/coco2017
 
 curl -O https://dl.fbaipublicfiles.com/detectron/coco/coco_annotations_minival.tgz
 tar xzf coco_annotations_minival.tgz

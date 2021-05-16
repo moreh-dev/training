@@ -16,9 +16,9 @@
 
 export OMP_NUM_THREADS=1
 
-: ${DATA_DIR:=${1:-"/datasets/LibriSpeech"}}
+: ${DATA_DIR:=${1:-"/scratch/dataset/mlperf/rnnt/LibriSpeech"}}
 : ${MODEL_CONFIG:=${2:-"configs/baseline_v3-1023sp.yaml"}}
-: ${OUTPUT_DIR:=${3:-"/results"}}
+: ${OUTPUT_DIR:=${3:-"/scratch/dataset/mlperf/rnnt/results"}}
 : ${CHECKPOINT:=${4:-}}
 : ${CUDNN_BENCHMARK:=true}
 : ${NUM_GPUS:=8}

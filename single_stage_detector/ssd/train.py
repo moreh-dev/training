@@ -211,6 +211,9 @@ def train300_mlperf_coco(args):
             # set seeds properly
             args.seed = broadcast_seeds(args.seed, device)
             local_seed = (args.seed + dist.get_rank()) % 2**32
+    ##################################
+    local_seed = 1
+    ##################################
     mllogger.event(key=mllog_const.SEED, value=local_seed)
     torch.manual_seed(local_seed)
     np.random.seed(seed=local_seed)
@@ -248,6 +251,9 @@ def train300_mlperf_coco(args):
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
                                   num_workers=4)
+    train_dataloader = DataLoader(train_coco,
+                                  batch_size=args.batch_size,
+                                  )
     # set shuffle=True in DataLoader
     if args.rank==0:
         val_dataloader = DataLoader(val_coco,
@@ -277,6 +283,8 @@ def train300_mlperf_coco(args):
 	# parallelize
     if args.distributed:
         ssd300 = DDP(ssd300)
+
+    # ssd300 = torch.nn.DataParallel(ssd300)
 
     global_batch_size = N_gpu * args.batch_size
     mllogger.event(key=mllog_const.GLOBAL_BATCH_SIZE, value=global_batch_size)
@@ -352,14 +360,19 @@ def train300_mlperf_coco(args):
                 fimg = Variable(fimg, requires_grad=True)
                 ploc, plabel = ssd300(fimg)
                 gloc, glabel = Variable(trans_bbox, requires_grad=False), \
-                               Variable(flabel, requires_grad=False)
+                            Variable(flabel, requires_grad=False)
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
+
+                # ploc.retain_grad()
+                # plabel.retain_grad()
+                # loss.retain_grad()
+
                 loss.backward()
 
             warmup_step(iter_num, current_lr)
             optim.step()
-            optim.zero_grad()
+            # optim.zero_grad()
             if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
                 print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}"\

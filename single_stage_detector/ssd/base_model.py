@@ -155,6 +155,8 @@ class Loss(nn.Module):
         # Two factor are from following links
         # http://jany.st/post/2017-11-05-single-shot-detector-ssd-from-scratch-in-tensorflow.html
         self.con_loss = nn.CrossEntropyLoss(reduce=False)
+        
+        self.tensors = []
 
     def _loc_vec(self, loc):
         """
@@ -166,6 +168,7 @@ class Loss(nn.Module):
         return torch.cat((gxy, gwh), dim=1).contiguous()
 
     def forward(self, ploc, plabel, gloc, glabel):
+        # self.tensors.clear()
         """
             ploc, plabel: Nx4x8732, Nxlabel_numx8732
                 predicted location and labels
@@ -180,9 +183,17 @@ class Loss(nn.Module):
         vec_gd = self._loc_vec(gloc)
 
         # sum on four coordinates, and mask
+        
         sl1 = self.sl1_loss(ploc, vec_gd).sum(dim=1)
         sl1 = (mask.float()*sl1).sum(dim=1)
 
+        ######################################################
+        # sl1_t1 = self.sl1_loss(ploc, vec_gd)
+        # sl1_t2 = sl1_t1.sum(dim=1)
+        # sl1_t3 = mask.float()*sl1_t2
+        # sl1 = sl1_t2.sum(dim=1)
+        ######################################################
+        
         # hard negative mining
         con = self.con_loss(plabel, glabel)
 
@@ -202,6 +213,30 @@ class Loss(nn.Module):
         total_loss = sl1 + closs
         num_mask = (pos_num > 0).float()
         pos_num = pos_num.float().clamp(min=1e-6)
+
+        ######################################################
+        # total_loss.retain_grad()
+        # sl1.retain_grad()
+        # closs.retain_grad()
+        # con_neg.retain_grad()
+        # con.retain_grad()
+        # plabel.retain_grad()
+        # ploc.retain_grad()
+        # sl1_t1.retain_grad()
+        # sl1_t2.retain_grad()
+        # sl1_t3.retain_grad()
+        
+        # self.tensors.append(total_loss)
+        # self.tensors.append(sl1)
+        # self.tensors.append(closs)
+        # self.tensors.append(con_neg)
+        # self.tensors.append(con)
+        # self.tensors.append(plabel)
+        # self.tensors.append(ploc)
+        # self.tensors.append(sl1_t1)
+        # self.tensors.append(sl1_t2)
+        # self.tensors.append(sl1_t3)
+        ######################################################
 
         ret = (total_loss*num_mask/pos_num).mean(dim=0)
         return ret
