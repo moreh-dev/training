@@ -166,8 +166,7 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
 
     ssd_print(key=mllog_const.EVAL_ACCURACY,
               value=current_accuracy,
-              metadata={mllog_const.EPOCH_NUM: epoch},
-              sync=False)
+              metadata={mllog_const.EPOCH_NUM: epoch})
     mllogger.end(
         key=mllog_const.EVAL_STOP,
         metadata={mllog_const.EPOCH_NUM: epoch})
@@ -213,7 +212,7 @@ def train300_mlperf_coco(args):
             local_seed = (args.seed + dist.get_rank()) % 2**32
 
     ##################################
-    local_seed = 1
+    # local_seed = 1
     ##################################
     mllogger.event(key=mllog_const.SEED, value=local_seed)
     torch.manual_seed(local_seed)
