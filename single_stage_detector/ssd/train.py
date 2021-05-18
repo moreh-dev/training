@@ -386,7 +386,7 @@ def train300_mlperf_coco(args):
             
             if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
-                print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, iter time: {}"\
+                print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, iter time: {:.3f}"\
                     .format(iter_num, loss.item(), avg_loss, end))
             iter_num += 1
 
