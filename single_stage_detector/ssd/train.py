@@ -350,8 +350,8 @@ def train300_mlperf_coco(args):
 
 
         start = time.time()
+        end = 0
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
-            
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
             img = torch.split(img, fragment_size)
@@ -389,12 +389,13 @@ def train300_mlperf_coco(args):
             optim.step()
             optim.zero_grad()
             
+            prev_end = end
             end = time.time() - start
-            
+            iter_interval = end - prev_end
             if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
                 print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, iter time: {:.3f}"\
-                    .format(iter_num, loss.item(), avg_loss, end))
+                    .format(iter_num, loss.item(), avg_loss, iter_interval))
             iter_num += 1
 
 
@@ -437,31 +438,32 @@ def train300_mlperf_coco(args):
     return False
 
 def main():
-    for i in range(5):
-        mllog.config(filename=os.path.join("./results", f'ssd_{i}.log'))
-        mllogger.event(key=mllog_const.SUBMISSION_ORG, value="moreh")
-        mllogger.event(key=mllog_const.SUBMISSION_PLATFORM, value="moreh")
-        mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.CLOSED)
-        mllogger.event(key=mllog_const.SUBMISSION_STATUS, value=mllog_const.ONPREM)
-        mllogger.event(key=mllog_const.CACHE_CLEAR)
-        mllogger.start(key=mllog_const.INIT_START)
-        args = parse_args()
+    args = parse_args()
+    mllog.config(filename=os.path.join("./results", f'ssd_{args.seed}.log'))
+    mllogger.event(key=mllog_const.SUBMISSION_ORG, value="moreh")
+    mllogger.event(key=mllog_const.SUBMISSION_PLATFORM, value="moreh")
+    mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.CLOSED)
+    mllogger.event(key=mllog_const.SUBMISSION_STATUS, value=mllog_const.ONPREM)
+    mllogger.event(key=mllog_const.CACHE_CLEAR)
+    mllogger.start(key=mllog_const.INIT_START)
+    
+    if args.local_rank == 0:
+        if not os.path.isdir('./models'):
+            os.mkdir('./models')
 
-        if args.local_rank == 0:
-            if not os.path.isdir('./models'):
-                os.mkdir('./models')
+    torch.backends.cudnn.benchmark = True
 
-        torch.backends.cudnn.benchmark = True
+    # start timing here
+    mllogger.end(key=mllog_const.INIT_STOP)
+    mllogger.start(key=mllog_const.RUN_START)
 
-        # start timing here
-        mllogger.end(key=mllog_const.INIT_STOP)
-        mllogger.start(key=mllog_const.RUN_START)
+    success = train300_mlperf_coco(args)
 
-        success = train300_mlperf_coco(args)
-
-        # end timing here
-        mllogger.end(key=mllog_const.RUN_STOP, value={"success": success})
-
+    # end timing here
+    if success:
+        mllogger.end(key=mllog_const.RUN_STOP, value={"success": success}, metadata={'status': 'success'})
+    else:
+        mllogger.end(key=mllog_const.RUN_STOP, value={"success": success}, metadata={'status': 'aborted'})
 
 if __name__ == "__main__":
     main()

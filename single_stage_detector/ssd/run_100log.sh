@@ -1,1 +1,1 @@
-python train.py --epochs 70 --warmup-factor 0 --lr 2.5e-3 --no-save --threshold=0.23 --data /home/share/dataset/mlperf/ssd/ --batch-size 32
+python train.py --epochs 70 --warmup-factor 0 --lr 2.5e-3 --no-save --threshold=0.23 --data /home/share/dataset/mlperf/ssd/ --batch-size 32 --seed $RANDOM
