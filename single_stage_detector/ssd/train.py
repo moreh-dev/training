@@ -254,14 +254,20 @@ def train300_mlperf_coco(args):
                                   num_workers=4)
     train_dataloader = DataLoader(train_coco,
                                   batch_size=args.batch_size,
+                                  num_workers=8
                                   )
     # set shuffle=True in DataLoader
     if args.rank==0:
+        # val_dataloader = DataLoader(val_coco,
+        #                             batch_size=args.val_batch_size or args.batch_size,
+        #                             shuffle=False,
+        #                             sampler=None,
+        #                             num_workers=4)
         val_dataloader = DataLoader(val_coco,
                                     batch_size=args.val_batch_size or args.batch_size,
                                     shuffle=False,
                                     sampler=None,
-                                    num_workers=4)
+                                    num_workers=8)
     else:
         val_dataloader = None
 
@@ -342,8 +348,9 @@ def train300_mlperf_coco(args):
             for param_group in optim.param_groups:
                 param_group['lr'] = current_lr
 
+
+        start = time.time()
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
-            start = time.time()
             
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
@@ -434,7 +441,7 @@ def main():
         mllog.config(filename=os.path.join("./results", f'ssd_{i}.log'))
         mllogger.event(key=mllog_const.SUBMISSION_ORG, value="moreh")
         mllogger.event(key=mllog_const.SUBMISSION_PLATFORM, value="moreh")
-        mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.OPEN)
+        mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.CLOSED)
         mllogger.event(key=mllog_const.SUBMISSION_STATUS, value=mllog_const.ONPREM)
         mllogger.event(key=mllog_const.CACHE_CLEAR)
         mllogger.start(key=mllog_const.INIT_START)
