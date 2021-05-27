@@ -49,8 +49,8 @@ def conv_block_factory(in_channels, out_channels,
         mllog_event(key=constants.WEIGHTS_INITIALIZATION, sync=False, metadata=dict(tensor=name + "_instancenorm"))
     activation = _activation(activation)
 
-    # return nn.Sequential(conv, normalization, activation)
-    return nn.Sequential(conv, activation)
+    return nn.Sequential(conv, normalization, activation)
+    # return nn.Sequential(conv, activation)
 
 
 class DownsampleBlock(nn.Module):

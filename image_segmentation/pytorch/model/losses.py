@@ -78,8 +78,7 @@ class DiceCELoss(nn.Module):
 
     def forward(self, y_pred, y_true):
         cross_entropy = self.cross_entropy(y_pred, torch.squeeze(y_true, dim=1).long())
-        # dice = torch.mean(1.0 - self.dice(y_pred, y_true))
-        dice = 0
+        dice = torch.mean(1.0 - self.dice(y_pred, y_true))
         return (dice + cross_entropy) / 2
 
 
