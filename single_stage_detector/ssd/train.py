@@ -213,7 +213,7 @@ def train300_mlperf_coco(args):
             local_seed = (args.seed + dist.get_rank()) % 2**32
 
     ##################################
-    # local_seed = 1
+    local_seed = 1
     ##################################
     mllogger.event(key=mllog_const.SEED, value=local_seed)
     torch.manual_seed(local_seed)
@@ -389,13 +389,12 @@ def train300_mlperf_coco(args):
             optim.step()
             optim.zero_grad()
             
-            prev_end = end
             end = time.time() - start
-            iter_interval = end - prev_end
+            start = time.time()
             if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
                 print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, iter time: {:.3f}"\
-                    .format(iter_num, loss.item(), avg_loss, iter_interval))
+                    .format(iter_num, loss.item(), avg_loss, end))
             iter_num += 1
 
 
