@@ -1,0 +1,15 @@
+python train.py \
+    --epochs 120 \
+    --lr 2.5e-3 \
+    --warmup 2.619685 \
+    --warmup-factor 0 \
+    --weight-decay 5e-4 \
+    --no-save \
+    --threshold=0.23 \
+    --data /home/share/dataset/mlperf/ssd/ \
+    --batch-size 64 \
+    --log-interval 100 \
+    --lr-decay-schedule 40 50 \
+    --val-interval 1 \
+    --val-epochs 40 50 55 60 65 70 75 80 \
+    --seed 0
