@@ -1,8 +1,8 @@
 import os
 from argparse import ArgumentParser
-from util import DefaultBoxes, Encoder, COCODetection
+from utils import DefaultBoxes, Encoder, COCODetection
 from base_model import Loss
-from util import SSDTransformer
+from utils import SSDTransformer
 from ssd300 import SSD300
 import torch
 from torch.autograd import Variable
@@ -11,7 +11,6 @@ import time
 import random
 import numpy as np
 import logging
-from mlperf_logging import mllog
 from mlperf_logging.mllog import constants as mllog_const
 from mlperf_logger import ssd_print, broadcast_seeds
 from mlperf_logger import mllogger
@@ -131,6 +130,12 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
                 print("")
                 print("No object detected in batch: {}".format(nbatch))
                 continue
+###################################################################################
+            # results = encoder.decode_batch(ploc, plabel,
+            #                                    overlap_threshold,
+            #                                    nms_max_detections,
+            #                                    nms_valid_thresh=nms_valid_thresh)
+###################################################################################
 
             (htot, wtot) = [d.cpu().numpy() for d in img_size]
             img_id = img_id.cpu().numpy()
@@ -167,7 +172,8 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
 
     ssd_print(key=mllog_const.EVAL_ACCURACY,
               value=current_accuracy,
-              metadata={mllog_const.EPOCH_NUM: epoch})
+              metadata={mllog_const.EPOCH_NUM: epoch},
+              sync=False)
     mllogger.end(
         key=mllog_const.EVAL_STOP,
         metadata={mllog_const.EPOCH_NUM: epoch})
@@ -211,10 +217,6 @@ def train300_mlperf_coco(args):
             # set seeds properly
             args.seed = broadcast_seeds(args.seed, device)
             local_seed = (args.seed + dist.get_rank()) % 2**32
-
-    ##################################
-    local_seed = 1
-    ##################################
     mllogger.event(key=mllog_const.SEED, value=local_seed)
     torch.manual_seed(local_seed)
     np.random.seed(seed=local_seed)
@@ -251,23 +253,14 @@ def train300_mlperf_coco(args):
                                   batch_size=args.batch_size,
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
-                                  num_workers=4)
-    train_dataloader = DataLoader(train_coco,
-                                  batch_size=args.batch_size,
-                                  num_workers=8
-                                  )
+                                  num_workers=16)
     # set shuffle=True in DataLoader
     if args.rank==0:
-        # val_dataloader = DataLoader(val_coco,
-        #                             batch_size=args.val_batch_size or args.batch_size,
-        #                             shuffle=False,
-        #                             sampler=None,
-        #                             num_workers=4)
         val_dataloader = DataLoader(val_coco,
                                     batch_size=args.val_batch_size or args.batch_size,
                                     shuffle=False,
                                     sampler=None,
-                                    num_workers=8)
+                                    num_workers=4)
     else:
         val_dataloader = None
 
@@ -291,7 +284,13 @@ def train300_mlperf_coco(args):
     if args.distributed:
         ssd300 = DDP(ssd300)
 
-    global_batch_size = N_gpu * args.batch_size
+    # args.batch_size -> nvidia: batch_size per gpu  moreh: global_batch_size
+    if 'MOREH_NUM_DEVICES' in os.environ:
+        global_batch_size = args.batch_size
+        N_gpu = int(os.environ['MOREH_NUM_DEVICES'])
+    else:
+        global_batch_size = N_gpu * args.batch_size
+
     mllogger.event(key=mllog_const.GLOBAL_BATCH_SIZE, value=global_batch_size)
     # Reference doesn't support group batch norm, so bn_span==local_batch_size
     mllogger.event(key=mllog_const.MODEL_BN_SPAN, value=args.batch_size)
@@ -319,7 +318,10 @@ def train300_mlperf_coco(args):
 
     if args.warmup:
         nonempty_imgs = len(train_coco)
-        wb = int(args.warmup * nonempty_imgs / (N_gpu*args.batch_size))
+        if 'MOREH_NUM_DEVICES' in os.environ:
+            wb = int(args.warmup * nonempty_imgs / args.batch_size)
+        else:
+            wb = int(args.warmup * nonempty_imgs / (N_gpu*args.batch_size))
         ssd_print(key=mllog_const.OPT_LR_WARMUP_STEPS, value=wb)
         warmup_step = lambda iter_num, current_lr: lr_warmup(optim, wb, iter_num, current_lr, args)
     else:
@@ -348,10 +350,12 @@ def train300_mlperf_coco(args):
             for param_group in optim.param_groups:
                 param_group['lr'] = current_lr
 
-
         start = time.time()
-        end = 0
+        load_start = time.time()
+        data_load_time = 0
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
+            data_load_time += time.time() - load_start
+            #print('load_time: {:.3f}'.format(data_load_time))
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
             img = torch.split(img, fragment_size)
@@ -365,38 +369,29 @@ def train300_mlperf_coco(args):
                     fimg = fimg.cuda()
                     trans_bbox = trans_bbox.cuda()
                     flabel = flabel.cuda()
-                #fimg = Variable(fimg, requires_grad=True)
-                #################################################################
-                fimg.requires_grad = True
-                #################################################################
+                fimg = Variable(fimg, requires_grad=True)
                 ploc, plabel = ssd300(fimg)
-                # gloc, glabel = Variable(trans_bbox, requires_grad=False), \
-                #                Variable(flabel, requires_grad=False)
-                #################################################################
-                gloc = trans_bbox
-                glabel = flabel
-                #################################################################
+                gloc, glabel = Variable(trans_bbox, requires_grad=False), \
+                               Variable(flabel, requires_grad=False)
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
-                
-                # ploc.retain_grad()
-                # plabel.retain_grad()
-                # loss.retain_grad()
-                
                 loss.backward()
 
             warmup_step(iter_num, current_lr)
             optim.step()
             optim.zero_grad()
-            
-            end = time.time() - start
-            start = time.time()
-            if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
+            # if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
-                print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, iter time: {:.3f}"\
-                    .format(iter_num, loss.item(), avg_loss, end))
+                end = time.time()
+                # print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, Time: {:.3f}, Load Time: {:.3f}"\
+                #     .format(iter_num, loss.item(), avg_loss, end-start, data_load_time), flush=True)
+                print("Iteration: {:6d}, Loss function: {:5.3f}, Time: {:.3f}, Load Time: {:.3f}"\
+                    .format(iter_num, loss.item(), end-start, data_load_time), flush=True)
+                start = time.time()
+                data_load_time = 0
             iter_num += 1
 
+            load_start = time.time()
 
         if (args.val_epochs and (epoch+1) in args.val_epochs) or \
            (args.val_interval and not (epoch+1) % args.val_interval):
@@ -406,8 +401,6 @@ def train300_mlperf_coco(args):
                     if ('running_mean' in bn_name) or ('running_var' in bn_name):
                         dist.all_reduce(bn_buf, op=dist.ReduceOp.SUM)
                         bn_buf /= world_size
-                        ssd_print(key=mllog_const.MODEL_BN_SPAN,
-                            value=bn_buf)
             if args.rank == 0:
                 if not args.no_save:
                     print("")
@@ -426,9 +419,9 @@ def train300_mlperf_coco(args):
                 dist.broadcast(success, 0)
             if success[0]:
                     return True
-            mllogger.end(
-                key=mllog_const.EPOCH_STOP,
-                metadata={mllog_const.EPOCH_NUM: epoch})
+        mllogger.end(
+            key=mllog_const.EPOCH_STOP,
+            metadata={mllog_const.EPOCH_NUM: epoch})
     mllogger.end(
         key=mllog_const.BLOCK_STOP,
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
@@ -437,15 +430,16 @@ def train300_mlperf_coco(args):
     return False
 
 def main():
-    args = parse_args()
-    mllog.config(filename=os.path.join("./results", f'ssd_{args.seed}.log'))
+    mllogger.start(key=mllog_const.INIT_START)
     mllogger.event(key=mllog_const.SUBMISSION_ORG, value="moreh")
     mllogger.event(key=mllog_const.SUBMISSION_PLATFORM, value="moreh")
     mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.CLOSED)
     mllogger.event(key=mllog_const.SUBMISSION_STATUS, value=mllog_const.ONPREM)
+    mllogger.event(key=mllog_const.SUBMISSION_BENCHMARK, value=mllog_const.SSD)
+    mllogger.event(key=mllog_const.GRADIENT_ACCUMULATION_STEPS, value=1)
     mllogger.event(key=mllog_const.CACHE_CLEAR)
-    mllogger.start(key=mllog_const.INIT_START)
-    
+    args = parse_args()
+
     if args.local_rank == 0:
         if not os.path.isdir('./models'):
             os.mkdir('./models')
@@ -459,10 +453,8 @@ def main():
     success = train300_mlperf_coco(args)
 
     # end timing here
-    if success:
-        mllogger.end(key=mllog_const.RUN_STOP, value={"success": success}, metadata={'status': 'success'})
-    else:
-        mllogger.end(key=mllog_const.RUN_STOP, value={"success": success}, metadata={'status': 'aborted'})
+    mllogger.end(key=mllog_const.RUN_STOP, metadata={"status": success})
+
 
 if __name__ == "__main__":
     main()
