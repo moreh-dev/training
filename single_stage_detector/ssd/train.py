@@ -119,6 +119,7 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
             if use_cuda:
                 img = img.cuda()
             ploc, plabel = model(img)
+            ploc, plabel = ploc.cpu(), plabel.cpu()
 
             try:
                 results = encoder.decode_batch(ploc, plabel,
@@ -130,12 +131,6 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
                 print("")
                 print("No object detected in batch: {}".format(nbatch))
                 continue
-###################################################################################
-            # results = encoder.decode_batch(ploc, plabel,
-            #                                    overlap_threshold,
-            #                                    nms_max_detections,
-            #                                    nms_valid_thresh=nms_valid_thresh)
-###################################################################################
 
             (htot, wtot) = [d.cpu().numpy() for d in img_size]
             img_id = img_id.cpu().numpy()
@@ -334,7 +329,7 @@ def train300_mlperf_coco(args):
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
                   mllog_const.EPOCH_COUNT: args.epochs})
 
-    optim.zero_grad()
+    optim.zero_grad(set_to_none=True)
     for epoch in range(args.epochs):
         mllogger.start(
             key=mllog_const.EPOCH_START,
@@ -355,7 +350,6 @@ def train300_mlperf_coco(args):
         data_load_time = 0
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
             data_load_time += time.time() - load_start
-            #print('load_time: {:.3f}'.format(data_load_time))
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
             img = torch.split(img, fragment_size)
@@ -379,18 +373,16 @@ def train300_mlperf_coco(args):
 
             warmup_step(iter_num, current_lr)
             optim.step()
-            optim.zero_grad()
+            optim.zero_grad(set_to_none=True)
             # if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
-                end = time.time()
                 # print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, Time: {:.3f}, Load Time: {:.3f}"\
-                #     .format(iter_num, loss.item(), avg_loss, end-start, data_load_time), flush=True)
+                #     .format(iter_num, loss.item(), avg_loss, time.time()-start, data_load_time), flush=True)
                 print("Iteration: {:6d}, Loss function: {:5.3f}, Time: {:.3f}, Load Time: {:.3f}"\
-                    .format(iter_num, loss.item(), end-start, data_load_time), flush=True)
+                    .format(iter_num, loss.item(), time.time()-start, data_load_time), flush=True)
                 start = time.time()
                 data_load_time = 0
             iter_num += 1
-
             load_start = time.time()
 
         if (args.val_epochs and (epoch+1) in args.val_epochs) or \
@@ -405,8 +397,15 @@ def train300_mlperf_coco(args):
                 if not args.no_save:
                     print("")
                     print("saving model...")
-                    torch.save({"model" : ssd300.state_dict(), "label_map": train_coco.label_info},
-                               "./models/iter_{}.pt".format(iter_num))
+                    if 'MOREH_NUM_DEVICES' in os.environ:
+                        torch.save({"model" : ssd300.state_dict(), "label_map": train_coco.label_info},
+                               "./models/moreh_iter_{}.pt".format(iter_num))
+                    else:
+                        torch.save({"model" : ssd300.state_dict(), "label_map": train_coco.label_info},
+                               "./models/nvidia_iter_{}.pt".format(iter_num))
+                    # vanila code
+                    # torch.save({"model" : ssd300.state_dict(), "label_map": train_coco.label_info},
+                    #            "./models/iter_{}.pt".format(iter_num))
 
                 if coco_eval(ssd300, val_dataloader, cocoGt, encoder, inv_map,
                              args.threshold, epoch + 1, iter_num,
