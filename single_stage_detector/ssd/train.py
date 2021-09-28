@@ -11,7 +11,6 @@ import time
 import random
 import numpy as np
 import logging
-from apex import amp
 from mlperf_logging.mllog import constants as mllog_const
 from mlperf_logger import ssd_print, broadcast_seeds
 from mlperf_logger import mllogger
@@ -330,7 +329,11 @@ def train300_mlperf_coco(args):
 
     # fp16
     if args.fp16:
-        ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1')
+        try:
+            from apex import amp
+            ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1')
+        except:
+            raise ImportError("Please install APEX from https://github.com/nvidia/apex")
 
     mllogger.start(
         key=mllog_const.BLOCK_START,
