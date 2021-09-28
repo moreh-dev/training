@@ -20,4 +20,5 @@ python -m torch.distributed.launch --nproc_per_node=$GPU train.py \
     --lr-decay-schedule 44 55 \
     --val-interval 0 \
     --val-epochs 40 50 55 60 65 70 75 80 \
-    --seed $RANDOM |& tee ${LOGFILE_BASE}_nvidia_512.log
+    --fp16 True
+    --seed $RANDOM |& tee ${LOGFILE_BASE}_nvidia_512_fp16.log

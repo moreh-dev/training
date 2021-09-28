@@ -11,6 +11,7 @@ import time
 import random
 import numpy as np
 import logging
+from apex import amp
 from mlperf_logging.mllog import constants as mllog_const
 from mlperf_logger import ssd_print, broadcast_seeds
 from mlperf_logger import mllogger
@@ -69,6 +70,8 @@ def parse_args():
                              'than nms_valid_thresh.')
     parser.add_argument('--log-interval', type=int, default=100,
                         help='Logging mini-batch interval.')
+    parser.add_argument('--fp16', type=bool, default=False,
+                        help='use apex amp fp16 mode')
     # Distributed stuff
     parser.add_argument('--local_rank', default=os.getenv('LOCAL_RANK', 0), type=int,
                         help='Used for multi-process training. Can either be manually set '
@@ -324,6 +327,11 @@ def train300_mlperf_coco(args):
 
     ssd_print(key=mllog_const.OPT_LR_WARMUP_FACTOR, value=args.warmup_factor)
     ssd_print(key=mllog_const.OPT_LR_DECAY_BOUNDARY_EPOCHS, value=args.lr_decay_schedule)
+
+    # fp16
+    if args.fp16:
+        ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1')
+
     mllogger.start(
         key=mllog_const.BLOCK_START,
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
@@ -369,7 +377,11 @@ def train300_mlperf_coco(args):
                                Variable(flabel, requires_grad=False)
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
-                loss.backward()
+                if args.fp16:
+                    with amp.scale_loss(loss, optim) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
 
             warmup_step(iter_num, current_lr)
             optim.step()
