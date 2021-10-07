@@ -177,7 +177,7 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
     return current_accuracy >= threshold #Average Precision  (AP) @[ IoU=050:0.95 | area=   all | maxDets=100 ]
 
 def lr_warmup(optim, wb, iter_num, base_lr, args):
-	if iter_num < wb:
+	if iter_num <= wb:
 		# mlperf warmup rule
 		warmup_step = base_lr / (wb * (2 ** args.warmup_factor))
 		new_lr = base_lr - (wb - iter_num) * warmup_step
@@ -331,7 +331,7 @@ def train300_mlperf_coco(args):
     if args.fp16:
         try:
             from apex import amp
-            ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1')
+            ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1', loss_scale=128.0)
         except:
             raise ImportError("Please install APEX from https://github.com/nvidia/apex")
 
@@ -340,7 +340,7 @@ def train300_mlperf_coco(args):
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
                   mllog_const.EPOCH_COUNT: args.epochs})
 
-    optim.zero_grad(set_to_none=True)
+    optim.zero_grad()
     for epoch in range(args.epochs):
         mllogger.start(
             key=mllog_const.EPOCH_START,
@@ -388,13 +388,13 @@ def train300_mlperf_coco(args):
 
             warmup_step(iter_num, current_lr)
             optim.step()
-            optim.zero_grad(set_to_none=True)
+            optim.zero_grad()
             # if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
                 # print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}, Time: {:.3f}, Load Time: {:.3f}"\
                 #     .format(iter_num, loss.item(), avg_loss, time.time()-start, data_load_time), flush=True)
-                print("Iteration: {:6d}, Loss function: {:5.3f}, Time: {:.3f}, Load Time: {:.3f}"\
-                    .format(iter_num, loss.item(), time.time()-start, data_load_time), flush=True)
+                print("Iteration: {:6d}, Loss function: {:5.3f}, Time: {:.3f}, Load Time: {:.3f}, current_lr: {:.4f}"\
+                    .format(iter_num, loss.item(), time.time()-start, data_load_time, optim.param_groups[0]['lr']), flush=True)
                 start = time.time()
                 data_load_time = 0
             iter_num += 1
