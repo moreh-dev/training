@@ -605,18 +605,14 @@ def run_eval(model, eval_dataloader, device, num_eval_examples, first_eval=False
         for batch in cached_batches if use_cache else eval_dataloader:
             if not use_cache: batch = [t.to(device) for t in batch]
             input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
+            force_save = (i == 6)
             loss, mlm_acc, num_masked = model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_mask,
-                                  masked_lm_labels=masked_lm_labels, next_sentence_label=next_sentence_labels)
-            print ('@@@@@@ ' + str(i))
-            print (loss.sum())
-            print (mlm_acc.sum())
-            print (num_masked.sum())
+                                  masked_lm_labels=masked_lm_labels,
+                                  next_sentence_label=next_sentence_labels,
+                                  force_save=force_save)
             total_eval_loss += loss * num_masked
             total_eval_mlm_acc += mlm_acc * num_masked
-            print (total_eval_loss.sum())
-            print (total_eval_mlm_acc.sum())
             total_masked += num_masked
-            print (total_masked.sum())
             i += 1
     model.train()
 
