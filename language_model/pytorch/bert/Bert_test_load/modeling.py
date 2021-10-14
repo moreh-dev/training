@@ -50,7 +50,7 @@ from utils_bert import get_rank #TUAN
 
 logger = logging.getLogger(__name__)
 
-moreh_save_prefix = "moreh-6gpu-6-batch-fine-grained-save-for-reporting"
+moreh_save_prefix = "moreh-6gpu-6-batch-fine-grained-save-for-reporting-bias"
 def moreh_save(tensor, tensor_name, force_save=False):
     if not force_save:
         return True
@@ -362,6 +362,7 @@ class BertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
 
         moreh_save(self.LayerNorm.weight, 'ln-weight.pt', force_save=force_save)
+        moreh_save(self.LayerNorm.bias, 'ln-bias.pt', force_save=force_save)
         moreh_save(embeddings, 'embeddings-ln.pt', force_save=force_save)
         
         embeddings = self.dropout(embeddings)
