@@ -358,6 +358,7 @@ class BertEmbeddings(nn.Module):
         moreh_save(token_type_embeddings, 'toke_type_embeddings.pt', force_save=force_save)
 
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
+        moreh_save(embeddings, 'embeddings-double-bin.pt', force_save=force_save)
         embeddings = self.LayerNorm(embeddings)
         moreh_save(embeddings, 'embeddings-ln.pt', force_save=force_save)
         embeddings = self.dropout(embeddings)
