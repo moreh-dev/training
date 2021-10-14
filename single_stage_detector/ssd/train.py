@@ -119,7 +119,7 @@ def coco_eval(model, val_dataloader, cocoGt, encoder, inv_map, threshold,
             if use_cuda:
                 img = img.cuda()
             ploc, plabel = model(img)
-
+            ploc, plabel = ploc.cpu(), plabel.cpu()
             try:
                 results = encoder.decode_batch(ploc, plabel,
                                                overlap_threshold,
@@ -247,7 +247,7 @@ def train300_mlperf_coco(args):
                                   batch_size=args.batch_size,
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
-                                  num_workers=4)
+                                  num_workers=16)
     # set shuffle=True in DataLoader
     if args.rank==0:
         val_dataloader = DataLoader(val_coco,
@@ -278,7 +278,15 @@ def train300_mlperf_coco(args):
     if args.distributed:
         ssd300 = DDP(ssd300)
 
-    global_batch_size = N_gpu * args.batch_size
+    # args.batch_size -> nvidia: batch_size per gpu  moreh: global_batch_size
+    if 'MOREH_NUM_DEVICES' in os.environ:
+        global_batch_size = args.batch_size
+        N_gpu = int(os.environ['MOREH_NUM_DEVICES'])
+        if 'MOREH_ENABLE_DDP_MODE' in os.environ:
+            args.batch_size = global_batch_size/N_gpu
+    else:
+        global_batch_size = N_gpu * args.batch_size
+
     mllogger.event(key=mllog_const.GLOBAL_BATCH_SIZE, value=global_batch_size)
     # Reference doesn't support group batch norm, so bn_span==local_batch_size
     mllogger.event(key=mllog_const.MODEL_BN_SPAN, value=args.batch_size)
@@ -306,7 +314,10 @@ def train300_mlperf_coco(args):
 
     if args.warmup:
         nonempty_imgs = len(train_coco)
-        wb = int(args.warmup * nonempty_imgs / (N_gpu*args.batch_size))
+        if 'MOREH_NUM_DEVICES' in os.environ:
+            wb = int(args.warmup * nonempty_imgs / args.batch_size)
+        else:
+            wb = int(args.warmup * nonempty_imgs / (N_gpu*args.batch_size))
         ssd_print(key=mllog_const.OPT_LR_WARMUP_STEPS, value=wb)
         warmup_step = lambda iter_num, current_lr: lr_warmup(optim, wb, iter_num, current_lr, args)
     else:
@@ -335,7 +346,11 @@ def train300_mlperf_coco(args):
             for param_group in optim.param_groups:
                 param_group['lr'] = current_lr
 
+        start = time.time()
+        load_start = time.time()
+        data_load_time = 0
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
+            data_load_time += time.time() - load_start
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
             img = torch.split(img, fragment_size)
@@ -360,12 +375,17 @@ def train300_mlperf_coco(args):
             warmup_step(iter_num, current_lr)
             optim.step()
             optim.zero_grad()
-            if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
+            # if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
-                print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}"\
-                    .format(iter_num, loss.item(), avg_loss))
+                # print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}"\
+                #     .format(iter_num, loss.item(), avg_loss))
+                print("Iteration: {:6d}, Loss function: {:5.3f}"\
+                    .format(iter_num, loss.item()))
+                print("Time: {:.3f}, Load Time: {:.3f}".format(time.time()-start, data_load_time), flush=True)
+                start = time.time()
+                data_load_time = 0
             iter_num += 1
-
+            load_start = time.time()
 
         if (args.val_epochs and (epoch+1) in args.val_epochs) or \
            (args.val_interval and not (epoch+1) % args.val_interval):
@@ -375,8 +395,8 @@ def train300_mlperf_coco(args):
                     if ('running_mean' in bn_name) or ('running_var' in bn_name):
                         dist.all_reduce(bn_buf, op=dist.ReduceOp.SUM)
                         bn_buf /= world_size
-                        ssd_print(key=mllog_const.MODEL_BN_SPAN,
-                            value=bn_buf)
+                        # ssd_print(key=mllog_const.MODEL_BN_SPAN,
+                        #     value=bn_buf)
             if args.rank == 0:
                 if not args.no_save:
                     print("")
@@ -395,9 +415,9 @@ def train300_mlperf_coco(args):
                 dist.broadcast(success, 0)
             if success[0]:
                     return True
-            mllogger.end(
-                key=mllog_const.EPOCH_STOP,
-                metadata={mllog_const.EPOCH_NUM: epoch})
+        mllogger.end(
+            key=mllog_const.EPOCH_STOP,
+            metadata={mllog_const.EPOCH_NUM: epoch})
     mllogger.end(
         key=mllog_const.BLOCK_STOP,
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
@@ -407,6 +427,12 @@ def train300_mlperf_coco(args):
 
 def main():
     mllogger.start(key=mllog_const.INIT_START)
+    mllogger.event(key=mllog_const.SUBMISSION_ORG, value="moreh")
+    mllogger.event(key=mllog_const.SUBMISSION_PLATFORM, value="moreh")
+    mllogger.event(key=mllog_const.SUBMISSION_DIVISION, value=mllog_const.CLOSED)
+    mllogger.event(key=mllog_const.SUBMISSION_STATUS, value=mllog_const.ONPREM)
+    mllogger.event(key=mllog_const.SUBMISSION_BENCHMARK, value=mllog_const.SSD)
+    mllogger.event(key=mllog_const.GRADIENT_ACCUMULATION_STEPS, value=1)
     args = parse_args()
 
     if args.local_rank == 0:
@@ -422,7 +448,7 @@ def main():
     success = train300_mlperf_coco(args)
 
     # end timing here
-    mllogger.end(key=mllog_const.RUN_STOP, value={"success": success})
+    mllogger.end(key=mllog_const.RUN_STOP, metadata={"status": success})
 
 
 if __name__ == "__main__":
