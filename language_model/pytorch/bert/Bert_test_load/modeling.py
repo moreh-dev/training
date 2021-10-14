@@ -1059,6 +1059,7 @@ class BertForPreTraining(BertPreTrainedModel):
                 #temp =  #TUAN is trying to fix with sum only
                 _sum = torch.sum(mlm_labels != -1)
                 moreh_save(_sum, '_sum.pt')
+                global save_tensors
                 save_tensors = False
                 return total_loss, mlm_acc, _sum 
 
