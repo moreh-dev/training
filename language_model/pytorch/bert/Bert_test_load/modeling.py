@@ -905,8 +905,8 @@ class BertModel(BertPreTrainedModel):
             encoded_layers = encoded_layers[-1]
         return encoded_layers, pooled_output
 
-save_tensors = True
-moreh_save_prefix = "moreh_4_gpu_jw2"
+save_tensors = False
+moreh_save_prefix = "default"
 def moreh_save(tensor, tensor_name):
     if save_tensors:
         try:
@@ -972,7 +972,6 @@ class BertForPreTraining(BertPreTrainedModel):
         self.apply(self.init_bert_weights)
         self.dense_seq_output = config.dense_seq_output
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, masked_lm_labels=None, next_sentence_label=None, checkpoint_activations=False):
-
         ### kh add ###
         
         save_dir = os.path.join(os.getcwd(), 'results', 'eval_debug', '')
@@ -1060,6 +1059,7 @@ class BertForPreTraining(BertPreTrainedModel):
                 #temp =  #TUAN is trying to fix with sum only
                 _sum = torch.sum(mlm_labels != -1)
                 moreh_save(_sum, '_sum.pt')
+                save_tensors = False
                 return total_loss, mlm_acc, _sum 
 
 
