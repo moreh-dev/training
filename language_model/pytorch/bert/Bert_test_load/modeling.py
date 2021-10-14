@@ -50,6 +50,16 @@ from utils_bert import get_rank #TUAN
 
 logger = logging.getLogger(__name__)
 
+moreh_save_prefix = "moreh-6gpu-6-batch-fine-grained-save"
+def moreh_save(tensor, tensor_name, force_save=False):
+    if not force_save:
+        return True
+    try:
+        import os; os.makedirs('/scratch/bert_tensors/' + moreh_save_prefix)
+    except Exception as e:
+        pass
+    torch.save(tensor, '/scratch/bert_tensors/' + moreh_save_prefix + '/' + tensor_name)
+
 def remap_attn_names_tf(name):
     if 'attention' in name:
         ind = name.index("attention")
@@ -333,7 +343,7 @@ class BertEmbeddings(nn.Module):
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(self, input_ids, token_type_ids=None, force_save=False):
         seq_length = input_ids.size(1)
         position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
         position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
@@ -341,12 +351,17 @@ class BertEmbeddings(nn.Module):
             token_type_ids = torch.zeros_like(input_ids)
 
         words_embeddings = self.word_embeddings(input_ids)
+        moreh_save(words_embeddings, 'words_embeddings.pt', force_save=force_save)
         position_embeddings = self.position_embeddings(position_ids)
+        moreh_save(position_embeddings, 'position_embeddings.pt', force_save=force_save)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
+        moreh_save(token_type_embeddings, 'toke_type_embeddings.pt', force_save=force_save)
 
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
         embeddings = self.LayerNorm(embeddings)
+        moreh_save(embeddings, 'embeddings-ln.pt', force_save=force_save)
         embeddings = self.dropout(embeddings)
+        moreh_save(embeddings, 'embeddings-do.pt', force_save=force_save)
         return embeddings
 
 
@@ -533,7 +548,9 @@ class BertEncoder(nn.Module):
     #     if not output_all_encoded_layers:
     #         all_encoder_layers.append(hidden_states)
     #     return all_encoder_layers
-    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True, checkpoint_activations=False):
+    def forward(self, hidden_states, attention_mask,
+            output_all_encoded_layers=True, checkpoint_activations=False,
+            force_save=False):
 
         # Unpad inputs and mask. It will remove tokens that are padded. Assume ntokens is total number of tokens (padded and non-padded)
         # and ntokens_unpad is total number of non-padded tokens. Then unpadding performs the following compression of the inputs:
@@ -873,7 +890,9 @@ class BertModel(BertPreTrainedModel):
         self.apply(self.init_bert_weights)
         self.unpad = config.unpad
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True, checkpoint_activations=False):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None,
+            output_all_encoded_layers=True, checkpoint_activations=False,
+            force_save=False):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
@@ -895,25 +914,22 @@ class BertModel(BertPreTrainedModel):
             extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
             extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
-        embedding_output = self.embeddings(input_ids, token_type_ids)
+        embedding_output = self.embeddings(input_ids, token_type_ids,
+                force_save=force_save)
+        moreh_save(embedding_output, 'embedding_output.pt', force_save=force_save)
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
-                                      output_all_encoded_layers=output_all_encoded_layers, checkpoint_activations=checkpoint_activations)
+                                      output_all_encoded_layers=output_all_encoded_layers,
+                                      checkpoint_activations=checkpoint_activations,
+                                      force_save=force_save)
         sequence_output = encoded_layers[-1]
-        pooled_output = self.pooler(sequence_output)
+        moreh_save(sequence_output, 'sequence_output2.pt', force_save=force_save)
+        pooled_output = self.pooler(sequence_output, force_save=force_save)
+        moreh_save(pooled_output, 'pooled_output.pt', force_save=force_save)
         if not output_all_encoded_layers:
             encoded_layers = encoded_layers[-1]
         return encoded_layers, pooled_output
 
-moreh_save_prefix = "moreh-6gpu-6-batch"
-def moreh_save(tensor, tensor_name, force_save=False):
-    if not force_save:
-        return True
-    try:
-        import os; os.makedirs('/scratch/bert_tensors/' + moreh_save_prefix)
-    except Exception as e:
-        pass
-    torch.save(tensor, '/scratch/bert_tensors/' + moreh_save_prefix + '/' + tensor_name)
 
 class BertForPreTraining(BertPreTrainedModel):
     """BERT model with pre-training heads.
@@ -981,13 +997,13 @@ class BertForPreTraining(BertPreTrainedModel):
         ### ###
 
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask,
-                                                   output_all_encoded_layers=False, checkpoint_activations=checkpoint_activations)
+                                                   output_all_encoded_layers=False,
+                                                   checkpoint_activations=checkpoint_activations,
+                                                   force_save=force_save)
         moreh_save(sequence_output, 'sequence_output.pt', force_save=force_save)
         moreh_save(pooled_output, 'pooled_output.pt', force_save=force_save)
         # if dense_seq_output, prediction scores returned by this function is already masked out with masked_lm_labels, and first dimension is flattened
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output, masked_lm_labels)
-        moreh_save(prediction_scores, 'prediction_scores.pt', force_save=force_save)
-        moreh_save(seq_relationship_score, 'seq_relationship_score.pt', force_save=force_save)
         #print ("prediction_scores: ", torch.sum(prediction_scores.isnan()))
         if self.dense_seq_output:
             masked_lm_labels_flat = masked_lm_labels.view(-1)
@@ -1007,12 +1023,9 @@ class BertForPreTraining(BertPreTrainedModel):
                 masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), mlm_labels.view(-1))
             else:
                 masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), masked_lm_labels.view(-1))
-            moreh_save(masked_lm_loss, 'masked_lm_loss.pt', force_save=force_save)
             next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
-            moreh_save(next_sentence_loss, 'next_sentence_loss.pt', force_save=force_save)
             #print("loss is {} {}".format(masked_lm_loss, next_sentence_loss))
             total_loss = masked_lm_loss + next_sentence_loss
-            moreh_save(total_loss, 'total_loss.pt', force_save=force_save)
 
             # Masked Language Model Accuracy
             if not self.dense_seq_output:
@@ -1021,10 +1034,8 @@ class BertForPreTraining(BertPreTrainedModel):
                 mlm_predictions_scores = prediction_scores_flat[masked_lm_labels_flat != -1]
                 mlm_predictions = mlm_predictions_scores.argmax(dim=-1)
                 mlm_labels = masked_lm_labels_flat[masked_lm_labels_flat != -1]
-                moreh_save(mlm_labels, 'mlm_labels.pt', force_save=force_save)
             else:
                 mlm_predictions = prediction_scores.argmax(dim=-1)
-                moreh_save(mlm_predictions, 'mlm_predictions.pt', force_save=force_save)
             #mlm_acc = (mlm_predictions == mlm_labels).sum(dtype=torch.float)/mlm_labels.numel() # TUAN: CHEKC ALL mlm_labels.sum... #orig
             if self.training:
             #if True:
@@ -1049,7 +1060,6 @@ class BertForPreTraining(BertPreTrainedModel):
 
                 #temp = masked_lm_labels_flat[masked_lm_labels_flat != -1] # redistributed error (compiler)
                 #mlm_acc = (mlm_predictions == mlm_labels).sum(dtype=torch.float)/temp.numel() # TUAN: CHEKC ALL mlm_labels.sum...
-            moreh_save(mlm_acc, 'mlm_acc.pt', force_save=force_save)
             if self.training:
             #if True:
                 return total_loss, mlm_acc, mlm_labels.numel()
@@ -1060,7 +1070,6 @@ class BertForPreTraining(BertPreTrainedModel):
 
                 #temp =  #TUAN is trying to fix with sum only
                 _sum = torch.sum(mlm_labels != -1)
-                moreh_save(_sum, '_sum.pt', force_save=force_save)
                 return total_loss, mlm_acc, _sum 
 
 

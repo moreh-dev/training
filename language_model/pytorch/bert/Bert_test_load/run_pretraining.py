@@ -614,6 +614,8 @@ def run_eval(model, eval_dataloader, device, num_eval_examples, first_eval=False
             total_eval_mlm_acc += mlm_acc * num_masked
             total_masked += num_masked
             i += 1
+            if i == 7:
+                exit(0)
     model.train()
 
     #total_eval_mlm_acc and total_eval_loss are already tensors, total_masked is not 
