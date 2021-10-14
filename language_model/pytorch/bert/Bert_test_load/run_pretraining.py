@@ -601,21 +601,15 @@ def run_eval(model, eval_dataloader, device, num_eval_examples, first_eval=False
             cached_batches.append([t.to(device) for t in batch])
 
     with torch.no_grad():
-        i = 0
         for batch in cached_batches if use_cache else eval_dataloader:
             if not use_cache: batch = [t.to(device) for t in batch]
             input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels = batch
-            force_save = (i == 6)
             loss, mlm_acc, num_masked = model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_mask,
                                   masked_lm_labels=masked_lm_labels,
-                                  next_sentence_label=next_sentence_labels,
-                                  force_save=force_save)
+                                  next_sentence_label=next_sentence_labels)
             total_eval_loss += loss * num_masked
             total_eval_mlm_acc += mlm_acc * num_masked
             total_masked += num_masked
-            i += 1
-            if i == 7:
-                exit(0)
     model.train()
 
     #total_eval_mlm_acc and total_eval_loss are already tensors, total_masked is not 
@@ -665,7 +659,7 @@ def main():
     raw_train_start = time.time()
 
     #print (model)
-    pytorch_total_params = sum(p.numel() for p in model.parameters())
+    """ pytorch_total_params = sum(p.numel() for p in model.parameters())
     print ("#params1: ", pytorch_total_params)
     pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print ("#params2: ", pytorch_total_params)
@@ -680,7 +674,7 @@ def main():
         if param.requires_grad:
             print ("name: ", name)
             print ("sum: ", param.sum())
-    
+    """
 
 
     if args.do_train:
