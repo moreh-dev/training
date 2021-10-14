@@ -1,4 +1,10 @@
 Moreh eval_mlm_accuracy debug
+
+Data copy
+=================================================================================
+cp /home/share/dataset/mlperf/bert/cks/model.ckpt-28252.pt cks/
+
+Run moreh
 =================================================================================
 for 1 gpu:
 ```
