@@ -69,6 +69,8 @@ def parse_args():
                              'than nms_valid_thresh.')
     parser.add_argument('--log-interval', type=int, default=100,
                         help='Logging mini-batch interval.')
+    parser.add_argument('--fp16', type=bool, default=False,
+                        help='use apex amp fp16 mode')
     # Distributed stuff
     parser.add_argument('--local_rank', default=os.getenv('LOCAL_RANK', 0), type=int,
                         help='Used for multi-process training. Can either be manually set '
@@ -247,7 +249,7 @@ def train300_mlperf_coco(args):
                                   batch_size=args.batch_size,
                                   shuffle=(train_sampler is None),
                                   sampler=train_sampler,
-                                  num_workers=16)
+                                  num_workers=20)
     # set shuffle=True in DataLoader
     if args.rank==0:
         val_dataloader = DataLoader(val_coco,
@@ -282,14 +284,15 @@ def train300_mlperf_coco(args):
     if 'MOREH_NUM_DEVICES' in os.environ:
         global_batch_size = args.batch_size
         N_gpu = int(os.environ['MOREH_NUM_DEVICES'])
-        if 'MOREH_ENABLE_DDP_MODE' in os.environ:
-            args.batch_size = global_batch_size/N_gpu
     else:
         global_batch_size = N_gpu * args.batch_size
 
     mllogger.event(key=mllog_const.GLOBAL_BATCH_SIZE, value=global_batch_size)
     # Reference doesn't support group batch norm, so bn_span==local_batch_size
-    mllogger.event(key=mllog_const.MODEL_BN_SPAN, value=args.batch_size)
+    if 'MOREH_ENABLE_DDP_MODE' in os.environ:
+        mllogger.event(key=mllog_const.MODEL_BN_SPAN, value=args.batch_size/N_gpu)
+    else:
+        mllogger.event(key=mllog_const.MODEL_BN_SPAN, value=args.batch_size)
     current_lr = args.lr * (global_batch_size / 32)
 
     assert args.batch_size % args.batch_splits == 0, "--batch-size must be divisible by --batch-splits"
@@ -325,6 +328,15 @@ def train300_mlperf_coco(args):
 
     ssd_print(key=mllog_const.OPT_LR_WARMUP_FACTOR, value=args.warmup_factor)
     ssd_print(key=mllog_const.OPT_LR_DECAY_BOUNDARY_EPOCHS, value=args.lr_decay_schedule)
+
+    # fp16
+    if args.fp16:
+        try:
+            from apex import amp
+            ssd300, optim = amp.initialize(ssd300, optim, opt_level='O1', loss_scale=128.0)
+        except:
+            raise ImportError("Please install APEX from https://github.com/nvidia/apex")
+
     mllogger.start(
         key=mllog_const.BLOCK_START,
         metadata={mllog_const.FIRST_EPOCH_NUM: 1,
@@ -346,11 +358,7 @@ def train300_mlperf_coco(args):
             for param_group in optim.param_groups:
                 param_group['lr'] = current_lr
 
-        start = time.time()
-        load_start = time.time()
-        data_load_time = 0
         for nbatch, (img, img_id, img_size, bbox, label) in enumerate(train_dataloader):
-            data_load_time += time.time() - load_start
             current_batch_size = img.shape[0]
             # Split batch for gradient accumulation
             img = torch.split(img, fragment_size)
@@ -370,22 +378,19 @@ def train300_mlperf_coco(args):
                                Variable(flabel, requires_grad=False)
                 loss = loss_func(ploc, plabel, gloc, glabel)
                 loss = loss * (current_fragment_size / current_batch_size) # weighted mean
-                loss.backward()
+                if args.fp16:
+                    with amp.scale_loss(loss, optim) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
 
             warmup_step(iter_num, current_lr)
             optim.step()
             optim.zero_grad()
-            # if not np.isinf(loss.item()): avg_loss = 0.999*avg_loss + 0.001*loss.item()
             if args.rank == 0 and args.log_interval and not iter_num % args.log_interval:
-                # print("Iteration: {:6d}, Loss function: {:5.3f}, Average Loss: {:.3f}"\
-                #     .format(iter_num, loss.item(), avg_loss))
                 print("Iteration: {:6d}, Loss function: {:5.3f}"\
                     .format(iter_num, loss.item()))
-                print("Time: {:.3f}, Load Time: {:.3f}".format(time.time()-start, data_load_time), flush=True)
-                start = time.time()
-                data_load_time = 0
             iter_num += 1
-            load_start = time.time()
 
         if (args.val_epochs and (epoch+1) in args.val_epochs) or \
            (args.val_interval and not (epoch+1) % args.val_interval):

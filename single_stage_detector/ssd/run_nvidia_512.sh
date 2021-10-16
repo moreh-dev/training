@@ -14,7 +14,7 @@ python -m torch.distributed.launch --nproc_per_node=$GPU train.py \
     --weight-decay 1.6e-4 \
     --no-save \
     --threshold=0.23 \
-    --data /home/share/dataset/mlperf/ssd/ \
+    --data /scratch/ssd \
     --batch-size 128 \
     --log-interval 100 \
     --lr-decay-schedule 44 55 \
