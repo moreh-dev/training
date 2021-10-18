@@ -305,7 +305,7 @@ class SSDCropping(object):
         # Implementation uses 1 iteration to find a possible candidate, this
         # was shown to produce the same mAP as using more iterations.
         self.num_cropping_iterations = num_cropping_iterations
-        ssd_print(key=mllog_const.MAX_SAMPLES, value=self.num_cropping_iterations, sync=False)
+        # ssd_print(key=mllog_const.MAX_SAMPLES, value=self.num_cropping_iterations, sync=False)
 
     def __call__(self, img, img_size, bboxes, labels):
 

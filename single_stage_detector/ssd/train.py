@@ -228,6 +228,7 @@ def train300_mlperf_coco(args):
     input_size = 300
     train_trans = SSDTransformer(dboxes, (input_size, input_size), val=False,
                                  num_cropping_iterations=args.num_cropping_iterations)
+    ssd_print(key=mllog_const.MAX_SAMPLES, value=args.num_cropping_iterations, sync=False)
     val_trans = SSDTransformer(dboxes, (input_size, input_size), val=True)
 
     val_annotate = os.path.join(args.data, "annotations/instances_val2017.json")
@@ -453,7 +454,10 @@ def main():
     success = train300_mlperf_coco(args)
 
     # end timing here
-    mllogger.end(key=mllog_const.RUN_STOP, metadata={"status": success})
+    if success == True:
+        mllogger.end(key=mllog_const.RUN_STOP, metadata={"status": "success"})
+    else:
+        mllogger.end(key=mllog_const.RUN_STOP, metadata={"status": "abort"})
 
 
 if __name__ == "__main__":
